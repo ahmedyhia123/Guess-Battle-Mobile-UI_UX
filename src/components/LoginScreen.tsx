@@ -8,6 +8,12 @@ import { createClient } from '@supabase/supabase-js'
 import { projectId, publicAnonKey } from '../utils/supabase/info'
 import { toast } from 'sonner@2.0.3'
 
+// Create singleton Supabase client
+const supabaseClient = createClient(
+  `https://${projectId}.supabase.co`,
+  publicAnonKey
+)
+
 interface LoginScreenProps {
   onBack: () => void
   onLoginSuccess: (user: any, accessToken: string) => void
@@ -18,17 +24,12 @@ export function LoginScreen({ onBack, onLoginSuccess }: LoginScreenProps) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const supabase = createClient(
-    `https://${projectId}.supabase.co`,
-    publicAnonKey
-  )
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
         email,
         password,
       })

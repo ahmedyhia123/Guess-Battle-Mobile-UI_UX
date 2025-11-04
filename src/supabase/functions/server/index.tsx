@@ -125,9 +125,12 @@ app.post('/make-server-ea873bbf/rooms', async (c) => {
       return c.json({ error: 'Unauthorized' }, 401)
     }
 
-    const { roomName, password, isPublic } = await c.req.json()
+    const { roomName, password, isPublic, digitCount } = await c.req.json()
     const roomId = crypto.randomUUID().slice(0, 8).toUpperCase()
     const userProfile = await kv.get(`user:${user.id}`)
+
+    // Validate digit count
+    const validDigitCount = digitCount && digitCount >= 3 && digitCount <= 8 ? digitCount : 4
 
     const room = {
       id: roomId,
@@ -136,6 +139,7 @@ app.post('/make-server-ea873bbf/rooms', async (c) => {
       isPublic: isPublic !== false,
       createdBy: user.id,
       createdAt: new Date().toISOString(),
+      digitCount: validDigitCount, // Host-controlled number length
       players: [
         {
           id: user.id,
@@ -149,9 +153,12 @@ app.post('/make-server-ea873bbf/rooms', async (c) => {
       status: 'waiting', // waiting, playing, finished
       currentTurn: 0, // Index of player whose turn it is (0 or 1)
       round: 1, // Current round number
+      turnStartTime: null, // Timestamp when current turn started
+      turnDeadline: null, // Timestamp when current turn expires
       winner: null,
       startedAt: null,
       finishedAt: null,
+      lastActivity: new Date().toISOString(), // Track last activity for auto-cleanup
     }
 
     await kv.set(`room:${roomId}`, room)
@@ -164,6 +171,7 @@ app.post('/make-server-ea873bbf/rooms', async (c) => {
         name: roomName,
         playerCount: 1,
         createdBy: userProfile?.fullName || 'Player',
+        digitCount: validDigitCount,
       })
       await kv.set('public_rooms', publicRooms)
     }
@@ -244,6 +252,8 @@ app.post('/make-server-ea873bbf/rooms/:roomId/join', async (c) => {
       guesses: [],
     })
 
+    room.lastActivity = new Date().toISOString()
+
     await kv.set(`room:${roomId}`, room)
 
     // Update public rooms list
@@ -319,7 +329,13 @@ app.post('/make-server-ea873bbf/rooms/:roomId/set-number', async (c) => {
       return c.json({ error: 'Not in this room' }, 403)
     }
 
+    // Validate secret number length matches room's digit count
+    if (secretNumber.length !== room.digitCount) {
+      return c.json({ error: `Secret number must be exactly ${room.digitCount} digits` }, 400)
+    }
+
     room.players[playerIndex].secretNumber = secretNumber
+    room.lastActivity = new Date().toISOString()
 
     // Check if both players have set their numbers
     if (room.players.length === 2 && room.players.every((p: any) => p.secretNumber)) {
@@ -327,6 +343,11 @@ app.post('/make-server-ea873bbf/rooms/:roomId/set-number', async (c) => {
       room.startedAt = new Date().toISOString()
       room.currentTurn = 0 // Player 1 starts
       room.round = 1
+      
+      // Set turn timer (30 seconds)
+      const now = new Date()
+      room.turnStartTime = now.toISOString()
+      room.turnDeadline = new Date(now.getTime() + 30000).toISOString()
     }
 
     await kv.set(`room:${roomId}`, room)
@@ -369,6 +390,14 @@ app.post('/make-server-ea873bbf/rooms/:roomId/guess', async (c) => {
     if (room.currentTurn !== playerIndex) {
       return c.json({ error: 'Not your turn' }, 400)
     }
+
+    // Validate guess length
+    if (guess.length !== room.digitCount) {
+      return c.json({ error: `Guess must be exactly ${room.digitCount} digits` }, 400)
+    }
+
+    // Update last activity
+    room.lastActivity = new Date().toISOString()
 
     const opponentIndex = playerIndex === 0 ? 1 : 0
     const opponentNumber = room.players[opponentIndex].secretNumber
@@ -481,6 +510,11 @@ app.post('/make-server-ea873bbf/rooms/:roomId/guess', async (c) => {
       if (room.currentTurn === 0) {
         room.round++
       }
+      
+      // Set new turn timer (30 seconds)
+      const now = new Date()
+      room.turnStartTime = now.toISOString()
+      room.turnDeadline = new Date(now.getTime() + 30000).toISOString()
     }
 
     await kv.set(`room:${roomId}`, room)
@@ -543,6 +577,111 @@ app.get('/make-server-ea873bbf/stats', async (c) => {
     })
   } catch (error) {
     console.log('Get stats error:', error)
+    return c.json({ error: String(error) }, 500)
+  }
+})
+
+// Skip turn (when timer expires)
+app.post('/make-server-ea873bbf/rooms/:roomId/skip-turn', async (c) => {
+  try {
+    const roomId = c.req.param('roomId')
+    const room = await kv.get(`room:${roomId}`)
+
+    if (!room) {
+      return c.json({ error: 'Room not found' }, 404)
+    }
+
+    if (room.status !== 'playing') {
+      return c.json({ error: 'Game not in progress' }, 400)
+    }
+
+    // Check if turn has actually expired
+    const now = new Date()
+    const deadline = new Date(room.turnDeadline)
+    
+    if (now < deadline) {
+      return c.json({ error: 'Turn has not expired yet' }, 400)
+    }
+
+    // Switch to opponent's turn
+    const opponentIndex = room.currentTurn === 0 ? 1 : 0
+    room.currentTurn = opponentIndex
+    
+    // Increment round after both players have had a turn
+    if (room.currentTurn === 0) {
+      room.round++
+    }
+    
+    // Set new turn timer
+    room.turnStartTime = now.toISOString()
+    room.turnDeadline = new Date(now.getTime() + 30000).toISOString()
+    room.lastActivity = now.toISOString()
+
+    await kv.set(`room:${roomId}`, room)
+
+    return c.json({ 
+      success: true, 
+      room,
+      skipped: true,
+    })
+  } catch (error) {
+    console.log('Skip turn error:', error)
+    return c.json({ error: String(error) }, 500)
+  }
+})
+
+// Cleanup inactive rooms
+app.post('/make-server-ea873bbf/cleanup-rooms', async (c) => {
+  try {
+    const publicRooms = await kv.get('public_rooms') || []
+    const roomsToCheck = publicRooms.map((r: any) => r.id)
+    
+    const now = new Date()
+    const cleanedRooms: string[] = []
+    
+    for (const roomId of roomsToCheck) {
+      const room = await kv.get(`room:${roomId}`)
+      if (!room) continue
+      
+      const lastActivity = new Date(room.lastActivity || room.createdAt)
+      const timeSinceActivity = now.getTime() - lastActivity.getTime()
+      
+      // Delete if:
+      // 1. Waiting status and no activity for 5 minutes
+      // 2. Playing status and no activity for 10 minutes  
+      // 3. Finished status and 30 seconds have passed
+      let shouldDelete = false
+      
+      if (room.status === 'waiting' && timeSinceActivity > 5 * 60 * 1000) {
+        shouldDelete = true
+      } else if (room.status === 'playing' && timeSinceActivity > 10 * 60 * 1000) {
+        shouldDelete = true
+      } else if (room.status === 'finished' && room.finishedAt) {
+        const timeSinceFinish = now.getTime() - new Date(room.finishedAt).getTime()
+        if (timeSinceFinish > 30 * 1000) {
+          shouldDelete = true
+        }
+      }
+      
+      if (shouldDelete) {
+        await kv.del(`room:${roomId}`)
+        cleanedRooms.push(roomId)
+      }
+    }
+    
+    // Update public rooms list
+    if (cleanedRooms.length > 0) {
+      const updatedPublicRooms = publicRooms.filter((r: any) => !cleanedRooms.includes(r.id))
+      await kv.set('public_rooms', updatedPublicRooms)
+    }
+    
+    return c.json({ 
+      success: true, 
+      cleanedCount: cleanedRooms.length,
+      cleanedRooms,
+    })
+  } catch (error) {
+    console.log('Cleanup rooms error:', error)
     return c.json({ error: String(error) }, 500)
   }
 })

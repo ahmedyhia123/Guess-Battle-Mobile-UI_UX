@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { LoginScreen } from './components/LoginScreen'
 import { SignUpScreen } from './components/SignUpScreen'
@@ -27,6 +27,12 @@ type Screen =
   | 'profile'
   | 'settings'
 
+// Create singleton Supabase client
+const supabaseClient = createClient(
+  `https://${projectId}.supabase.co`,
+  publicAnonKey
+)
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('welcome')
   const [user, setUser] = useState<any>(null)
@@ -37,12 +43,7 @@ export default function App() {
   // Check for existing session on mount
   useEffect(() => {
     const checkSession = async () => {
-      const supabase = createClient(
-        `https://${projectId}.supabase.co`,
-        publicAnonKey
-      )
-
-      const { data: { session }, error } = await supabase.auth.getSession()
+      const { data: { session }, error } = await supabaseClient.auth.getSession()
 
       if (session && !error) {
         setUser(session.user)
@@ -52,6 +53,33 @@ export default function App() {
     }
 
     checkSession()
+  }, [])
+
+  // Background room cleanup scheduler (runs every 2 minutes)
+  useEffect(() => {
+    const cleanupRooms = async () => {
+      try {
+        await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-ea873bbf/cleanup-rooms`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${publicAnonKey}`,
+            },
+          }
+        )
+      } catch (error) {
+        console.error('Room cleanup error:', error)
+      }
+    }
+
+    // Run cleanup every 2 minutes
+    const interval = setInterval(cleanupRooms, 2 * 60 * 1000)
+    
+    // Run immediately on mount
+    cleanupRooms()
+    
+    return () => clearInterval(interval)
   }, [])
 
   const handleLoginSuccess = (userData: any, token: string) => {
@@ -90,12 +118,7 @@ export default function App() {
   }
 
   const handleLogout = async () => {
-    const supabase = createClient(
-      `https://${projectId}.supabase.co`,
-      publicAnonKey
-    )
-
-    await supabase.auth.signOut()
+    await supabaseClient.auth.signOut()
     setUser(null)
     setAccessToken('')
     setCurrentRoomId('')
@@ -172,6 +195,9 @@ export default function App() {
       {currentScreen === 'result' && (
         <ResultScreen
           isWinner={isWinner}
+          roomId={currentRoomId}
+          accessToken={accessToken}
+          userId={user?.id || ''}
           onPlayAgain={handlePlayAgain}
           onExit={handleBackToLobby}
         />

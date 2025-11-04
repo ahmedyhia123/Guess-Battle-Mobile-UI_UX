@@ -4,7 +4,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Card } from './ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Plus, Search, RefreshCw, Lock, Users, LogOut, User, History, Settings } from 'lucide-react'
 import { projectId, publicAnonKey } from '../utils/supabase/info'
@@ -15,6 +15,7 @@ interface Room {
   name: string
   playerCount: number
   createdBy: string
+  digitCount?: number
 }
 
 interface RoomsLobbyProps {
@@ -39,6 +40,7 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
   const [roomName, setRoomName] = useState('')
   const [roomPassword, setRoomPassword] = useState('')
   const [isPublic, setIsPublic] = useState(true)
+  const [digitCount, setDigitCount] = useState(4)
 
   // Join room form
   const [joinRoomId, setJoinRoomId] = useState('')
@@ -95,6 +97,7 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
             roomName,
             password: roomPassword || null,
             isPublic,
+            digitCount,
           }),
         }
       )
@@ -112,6 +115,7 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
       setRoomName('')
       setRoomPassword('')
       setIsPublic(true)
+      setDigitCount(4)
       onRoomJoined(data.room.id)
     } catch (error) {
       toast.error('Create room error: ' + String(error))
@@ -283,6 +287,11 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
                         <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
                           {room.id}
                         </span>
+                        {room.digitCount && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                            {room.digitCount} digits
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-600">
                         <span className="flex items-center gap-1">
@@ -312,6 +321,9 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create New Room</DialogTitle>
+            <DialogDescription>
+              Set up your game room with custom settings
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateRoom} className="space-y-4 mt-4">
             <div>
@@ -324,6 +336,29 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
                 className="mt-2 h-11 rounded-xl"
                 required
               />
+            </div>
+
+            <div>
+              <Label>Number Length (Digits)</Label>
+              <div className="flex gap-2 mt-2">
+                {[3, 4, 5, 6, 7, 8].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setDigitCount(count)}
+                    className={`flex-1 h-11 rounded-xl transition-all ${
+                      digitCount === count
+                        ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg scale-105'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Players will guess {digitCount}-digit numbers
+              </p>
             </div>
 
             <div>
@@ -368,6 +403,9 @@ export function RoomsLobby({ accessToken, userId, onRoomJoined, onProfile, onHis
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Join Room</DialogTitle>
+            <DialogDescription>
+              Enter the room ID to join an existing game
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); handleJoinRoom(joinRoomId, joinPassword); }} className="space-y-4 mt-4">
             <div>

@@ -4,7 +4,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { Target, TrendingUp, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Target, TrendingUp, CheckCircle2, XCircle, Loader2, Lock } from 'lucide-react'
 import { projectId } from '../utils/supabase/info'
 import { toast } from 'sonner@2.0.3'
 
@@ -48,6 +48,9 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
   const [round, setRound] = useState(1)
   const [playerIndex, setPlayerIndex] = useState(0)
   const [turnTransition, setTurnTransition] = useState(false)
+  const [mySecretNumber, setMySecretNumber] = useState('')
+  const [turnDeadline, setTurnDeadline] = useState<string | null>(null)
+  const [timeRemaining, setTimeRemaining] = useState(30)
 
   const fetchGameState = async () => {
     try {
@@ -71,6 +74,7 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
           setGuesses(currentPlayer.guesses || [])
           if (currentPlayer.secretNumber) {
             setDigitCount(currentPlayer.secretNumber.length)
+            setMySecretNumber(currentPlayer.secretNumber)
           }
         }
 
@@ -81,6 +85,7 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
         setPlayerIndex(pIndex)
         setCurrentTurn(data.room.currentTurn ?? 0)
         setRound(data.room.round ?? 1)
+        setTurnDeadline(data.room.turnDeadline)
 
         // Check if game is finished
         if (data.room.status === 'finished') {
@@ -97,6 +102,51 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
     const interval = setInterval(fetchGameState, 2000)
     return () => clearInterval(interval)
   }, [roomId])
+
+  // Timer countdown
+  useEffect(() => {
+    if (!turnDeadline) return
+
+    const interval = setInterval(() => {
+      const now = new Date().getTime()
+      const deadline = new Date(turnDeadline).getTime()
+      const remaining = Math.max(0, Math.floor((deadline - now) / 1000))
+      
+      setTimeRemaining(remaining)
+
+      // Auto-skip turn if time runs out
+      if (remaining === 0 && currentTurn === playerIndex) {
+        handleSkipTurn()
+        clearInterval(interval)
+      }
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [turnDeadline, currentTurn, playerIndex])
+
+  const handleSkipTurn = async () => {
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-ea873bbf/rooms/${roomId}/skip-turn`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (response.ok && data.skipped) {
+        toast.error('⏰ Time\'s up! Turn skipped.')
+        fetchGameState()
+      }
+    } catch (error) {
+      console.error('Skip turn error:', error)
+    }
+  }
 
   // Detect turn changes and play sound/vibration
   useEffect(() => {
@@ -214,6 +264,13 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
 
   const isMyTurn = currentTurn === playerIndex
   const currentPlayerName = isMyTurn ? 'Your' : opponent?.fullName + "'s"
+  
+  // Timer color based on time remaining
+  const getTimerColor = () => {
+    if (timeRemaining > 20) return 'from-green-400 to-emerald-500'
+    if (timeRemaining > 10) return 'from-yellow-400 to-orange-400'
+    return 'from-red-500 to-pink-500'
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 p-4 relative">
@@ -231,16 +288,32 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
       </AnimatePresence>
       
       <div className="max-w-4xl mx-auto pt-4">
-        {/* Round Counter */}
+        {/* Round Counter & Timer */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-4 text-center"
+          className="mb-4 flex items-center justify-between gap-4"
         >
-          <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-6 py-3 rounded-full">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-            <p className="text-white">Round {round}</p>
+          <div className="flex-1 flex justify-center">
+            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-6 py-3 rounded-full">
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+              <p className="text-white">Round {round}</p>
+            </div>
           </div>
+
+          {/* 30-Second Timer */}
+          <motion.div
+            animate={timeRemaining <= 5 ? { scale: [1, 1.1, 1] } : {}}
+            transition={{ duration: 0.5, repeat: timeRemaining <= 5 ? Infinity : 0 }}
+            className="flex-1 flex justify-center"
+          >
+            <div className={`inline-flex items-center gap-2 bg-gradient-to-r ${getTimerColor()} px-6 py-3 rounded-full shadow-lg`}>
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-white min-w-[3ch] text-center">{timeRemaining}s</p>
+            </div>
+          </motion.div>
         </motion.div>
 
         {/* Turn Indicator */}
@@ -263,6 +336,25 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
             </div>
           </Card>
         </motion.div>
+
+        {/* Your Secret Number Display */}
+        {mySecretNumber && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4"
+          >
+            <Card className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
+              <div className="flex items-center justify-center gap-3">
+                <Lock className="w-5 h-5 text-green-600" />
+                <div className="text-center">
+                  <p className="text-xs text-green-700 mb-1">Your Secret Number</p>
+                  <p className="text-2xl tracking-widest text-green-600">{mySecretNumber}</p>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Header - Players Info */}
         <motion.div

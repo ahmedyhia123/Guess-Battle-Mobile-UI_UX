@@ -63,12 +63,12 @@ export function SignUpScreen({ onBack, onSignUpSuccess }: SignUpScreenProps) {
 
       // Auto-login after sign up
       const { createClient } = await import('@supabase/supabase-js')
-      const supabase = createClient(
+      const supabaseClient = createClient(
         `https://${projectId}.supabase.co`,
         publicAnonKey
       )
 
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+      const { data: loginData, error: loginError } = await supabaseClient.auth.signInWithPassword({
         email,
         password,
       })

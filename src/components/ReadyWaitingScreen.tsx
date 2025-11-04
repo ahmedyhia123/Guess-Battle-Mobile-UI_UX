@@ -6,6 +6,7 @@ import { Card } from './ui/card'
 import { Check, Loader2, ArrowLeft } from 'lucide-react'
 import { projectId, publicAnonKey } from '../utils/supabase/info'
 import { toast } from 'sonner@2.0.3'
+import { RoomCleanupWarning } from './RoomCleanupWarning'
 
 interface Player {
   id: string
@@ -26,6 +27,8 @@ export function ReadyWaitingScreen({ roomId, accessToken, userId, onBothReady, o
   const [players, setPlayers] = useState<Player[]>([])
   const [isReady, setIsReady] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [lastActivity, setLastActivity] = useState(new Date().toISOString())
+  const [roomStatus, setRoomStatus] = useState<'waiting' | 'playing' | 'finished'>('waiting')
 
   const fetchRoomStatus = async () => {
     try {
@@ -42,6 +45,8 @@ export function ReadyWaitingScreen({ roomId, accessToken, userId, onBothReady, o
 
       if (response.ok && data.room) {
         setPlayers(data.room.players)
+        setLastActivity(data.room.lastActivity || data.room.createdAt)
+        setRoomStatus(data.room.status || 'waiting')
         
         // Check if both players are ready
         if (data.room.players.length === 2 && data.room.players.every((p: Player) => p.ready)) {
@@ -103,6 +108,9 @@ export function ReadyWaitingScreen({ roomId, accessToken, userId, onBothReady, o
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
+      {/* Cleanup Warning */}
+      <RoomCleanupWarning lastActivity={lastActivity} status={roomStatus} />
+      
       <div className="max-w-md w-full">
         {/* Back Button */}
         <Button

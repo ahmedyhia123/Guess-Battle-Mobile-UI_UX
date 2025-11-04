@@ -19,6 +19,32 @@ export function NumberSelectionScreen({ roomId, accessToken, onGameStart }: Numb
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
+  // Fetch room data to get digit count
+  useEffect(() => {
+    const fetchRoomData = async () => {
+      try {
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-ea873bbf/rooms/${roomId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          }
+        )
+
+        const data = await response.json()
+
+        if (response.ok && data.room) {
+          setDigitCount(data.room.digitCount || 4)
+        }
+      } catch (error) {
+        console.error('Fetch room data error:', error)
+      }
+    }
+
+    fetchRoomData()
+  }, [roomId, accessToken])
+
   useEffect(() => {
     // Poll to check if both players have set their numbers
     const checkGameStatus = async () => {
@@ -117,28 +143,11 @@ export function NumberSelectionScreen({ roomId, accessToken, onGameStart }: Numb
 
           {!submitted ? (
             <>
-              {/* Digit Count Selector */}
-              <div className="mb-6">
-                <p className="text-gray-700 mb-3 text-center">Number of digits:</p>
-                <div className="flex gap-2 justify-center">
-                  {[3, 4, 5, 6, 7, 8].map((count) => (
-                    <button
-                      key={count}
-                      type="button"
-                      onClick={() => {
-                        setDigitCount(count)
-                        setSecretNumber('')
-                      }}
-                      className={`w-12 h-12 rounded-xl transition-all ${
-                        digitCount === count
-                          ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white shadow-lg scale-110'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {count}
-                    </button>
-                  ))}
-                </div>
+              {/* Digit Count Display */}
+              <div className="mb-6 p-4 bg-purple-50 rounded-xl">
+                <p className="text-purple-900 text-sm text-center">
+                  The host has set the number length to <strong>{digitCount} digits</strong>
+                </p>
               </div>
 
               {/* Number Input */}
@@ -185,7 +194,13 @@ export function NumberSelectionScreen({ roomId, accessToken, onGameStart }: Numb
             <div className="text-center py-8">
               <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
               <h3 className="text-gray-900 mb-2">Number Locked In! 🔒</h3>
-              <p className="text-gray-600">Waiting for opponent to choose their number...</p>
+              <p className="text-gray-600 mb-4">Waiting for opponent to choose their number...</p>
+              
+              {/* Show own secret number */}
+              <div className="mt-6 p-4 bg-green-50 rounded-xl border-2 border-green-200">
+                <p className="text-green-900 text-sm mb-2">Your Secret Number:</p>
+                <p className="text-3xl tracking-widest text-green-600">{secretNumber}</p>
+              </div>
             </div>
           )}
         </Card>
