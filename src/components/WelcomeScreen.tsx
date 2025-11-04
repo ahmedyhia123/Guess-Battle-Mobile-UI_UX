@@ -94,7 +94,7 @@ export function WelcomeScreen({ onLogin, onSignUp }: WelcomeScreenProps) {
           <Button
             onClick={onSignUp}
             variant="outline"
-            className="w-full border-2 border-white text-white hover:bg-white/10 h-14 rounded-2xl shadow-lg"
+            className="w-full border-2 border-white text-white hover:bg-white/10 h-14 rounded-2xl shadow-lg bg-[rgb(96,62,62)]"
           >
             Sign Up
           </Button>
