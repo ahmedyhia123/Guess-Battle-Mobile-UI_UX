@@ -31,6 +31,7 @@
             "@radix-ui/react-toggle-group": "^1.1.2",
             "@radix-ui/react-tooltip": "^1.1.8",
             "@supabase/supabase-js": "^2",
+            "@vercel/analytics": "^1.5.0",
             "canvas-confetti": "*",
             "class-variance-authority": "^0.7.1",
             "clsx": "*",
@@ -60,6 +61,5 @@
             "dev": "vite",
             "build": "vite build",
             "postinstall": "chmod +x node_modules/.bin/vite"
-
       }
 }

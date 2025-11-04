@@ -13,6 +13,8 @@ import { SettingsScreen } from './components/SettingsScreen'
 import { Toaster } from './components/ui/sonner'
 import { getSupabaseClient } from './utils/supabase/client'
 import { projectId, publicAnonKey } from './utils/supabase/info'
+import { Analytics } from '@vercel/analytics/react';
+
 
 type Screen = 
   | 'welcome'
@@ -240,6 +242,7 @@ export default function App() {
       )}
 
       <Toaster position="top-center" richColors />
+      <Analytics />
     </>
   )
 }
