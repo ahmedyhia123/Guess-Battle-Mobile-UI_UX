@@ -105,7 +105,12 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
 
   // Timer countdown
   useEffect(() => {
-    if (!turnDeadline) return
+    if (!turnDeadline) {
+      setTimeRemaining(30)
+      return
+    }
+
+    let hasSkipped = false
 
     const interval = setInterval(() => {
       const now = new Date().getTime()
@@ -114,14 +119,16 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
       
       setTimeRemaining(remaining)
 
-      // Auto-skip turn if time runs out
-      if (remaining === 0 && currentTurn === playerIndex) {
+      // Auto-skip turn if time runs out (only once, only on current player's turn)
+      if (remaining === 0 && currentTurn === playerIndex && !hasSkipped) {
+        hasSkipped = true
         handleSkipTurn()
-        clearInterval(interval)
       }
     }, 100)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+    }
   }, [turnDeadline, currentTurn, playerIndex])
 
   const handleSkipTurn = async () => {
@@ -141,7 +148,13 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
 
       if (response.ok && data.skipped) {
         toast.error('⏰ Time\'s up! Turn skipped.')
-        fetchGameState()
+        // Immediately fetch the new game state
+        await fetchGameState()
+      } else if (!response.ok && data.error) {
+        // Don't show error toast for "Not your turn" since it's expected when opponent skips
+        if (data.error !== 'Not your turn to skip' && data.error !== 'Turn has not expired yet') {
+          console.error('Skip turn error:', data.error)
+        }
       }
     } catch (error) {
       console.error('Skip turn error:', error)
@@ -254,8 +267,8 @@ export function GameplayScreen({ roomId, accessToken, userId, onGameEnd }: Gamep
       setGuess('')
       setLoading(false)
       
-      // Immediately fetch updated state
-      setTimeout(() => fetchGameState(), 500)
+      // Immediately fetch updated state to get new turn deadline
+      await fetchGameState()
     } catch (error) {
       toast.error('Guess error: ' + String(error))
       setLoading(false)

@@ -584,6 +584,13 @@ app.get('/make-server-ea873bbf/stats', async (c) => {
 // Skip turn (when timer expires)
 app.post('/make-server-ea873bbf/rooms/:roomId/skip-turn', async (c) => {
   try {
+    const accessToken = c.req.header('Authorization')?.split(' ')[1]
+    const { data: { user }, error } = await supabase.auth.getUser(accessToken)
+    
+    if (!user?.id || error) {
+      return c.json({ error: 'Unauthorized' }, 401)
+    }
+
     const roomId = c.req.param('roomId')
     const room = await kv.get(`room:${roomId}`)
 
@@ -595,11 +602,23 @@ app.post('/make-server-ea873bbf/rooms/:roomId/skip-turn', async (c) => {
       return c.json({ error: 'Game not in progress' }, 400)
     }
 
-    // Check if turn has actually expired
+    // Verify that the requesting user is in the room
+    const playerIndex = room.players.findIndex((p: any) => p.id === user.id)
+    if (playerIndex === -1) {
+      return c.json({ error: 'Not in this room' }, 403)
+    }
+
+    // Verify it's actually this player's turn (only the current player can trigger auto-skip)
+    if (room.currentTurn !== playerIndex) {
+      return c.json({ error: 'Not your turn to skip' }, 400)
+    }
+
+    // Check if turn has actually expired (with 500ms grace period for network latency)
     const now = new Date()
     const deadline = new Date(room.turnDeadline)
+    const graceThreshold = 500 // milliseconds
     
-    if (now < deadline) {
+    if (now.getTime() < (deadline.getTime() - graceThreshold)) {
       return c.json({ error: 'Turn has not expired yet' }, 400)
     }
 

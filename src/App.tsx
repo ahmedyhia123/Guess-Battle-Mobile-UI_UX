@@ -11,7 +11,7 @@ import { GameHistoryScreen } from './components/GameHistoryScreen'
 import { ProfileScreen } from './components/ProfileScreen'
 import { SettingsScreen } from './components/SettingsScreen'
 import { Toaster } from './components/ui/sonner'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseClient } from './utils/supabase/client'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 type Screen = 
@@ -27,11 +27,8 @@ type Screen =
   | 'profile'
   | 'settings'
 
-// Create singleton Supabase client
-const supabaseClient = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-)
+// Get singleton Supabase client
+const supabaseClient = getSupabaseClient()
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('welcome')
@@ -40,7 +37,7 @@ export default function App() {
   const [currentRoomId, setCurrentRoomId] = useState<string>('')
   const [isWinner, setIsWinner] = useState(false)
 
-  // Check for existing session on mount
+  // Check for existing session on mount and listen for auth changes (OAuth callback)
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session }, error } = await supabaseClient.auth.getSession()
@@ -53,6 +50,23 @@ export default function App() {
     }
 
     checkSession()
+
+    // Listen for auth state changes (handles OAuth redirects)
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        setUser(session.user)
+        setAccessToken(session.access_token)
+        setCurrentScreen('lobby')
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setAccessToken('')
+        setCurrentScreen('welcome')
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   // Background room cleanup scheduler (runs every 2 minutes)

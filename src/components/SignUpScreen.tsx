@@ -5,7 +5,8 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { ArrowLeft, User, Mail, Lock, Chrome, Upload } from 'lucide-react'
-import { projectId, publicAnonKey } from '../utils/supabase/info'
+import { projectId } from '../utils/supabase/info'
+import { getSupabaseClient } from '../utils/supabase/client'
 import { toast } from 'sonner@2.0.3'
 
 interface SignUpScreenProps {
@@ -62,11 +63,7 @@ export function SignUpScreen({ onBack, onSignUpSuccess }: SignUpScreenProps) {
       }
 
       // Auto-login after sign up
-      const { createClient } = await import('@supabase/supabase-js')
-      const supabaseClient = createClient(
-        `https://${projectId}.supabase.co`,
-        publicAnonKey
-      )
+      const supabaseClient = getSupabaseClient()
 
       const { data: loginData, error: loginError } = await supabaseClient.auth.signInWithPassword({
         email,
@@ -86,6 +83,29 @@ export function SignUpScreen({ onBack, onSignUpSuccess }: SignUpScreenProps) {
     } catch (error) {
       toast.error('Sign up error: ' + String(error))
       setLoading(false)
+    }
+  }
+
+  const handleGoogleSignUp = async () => {
+    try {
+      const supabaseClient = getSupabaseClient()
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      })
+
+      if (error) {
+        // If Google OAuth is not configured, show helpful message
+        if (error.message.includes('not enabled') || error.message.includes('provider')) {
+          toast.error('Please complete Google OAuth setup at https://supabase.com/docs/guides/auth/social-login/auth-google')
+        } else {
+          toast.error('Google sign up failed: ' + error.message)
+        }
+      }
+    } catch (error) {
+      toast.error('Google sign up error: ' + String(error))
     }
   }
 
@@ -211,7 +231,7 @@ export function SignUpScreen({ onBack, onSignUpSuccess }: SignUpScreenProps) {
             type="button"
             variant="outline"
             className="w-full h-12 rounded-xl border-2"
-            onClick={() => toast.error('Please complete Google OAuth setup at https://supabase.com/docs/guides/auth/social-login/auth-google')}
+            onClick={handleGoogleSignUp}
           >
             <Chrome className="w-5 h-5 mr-2" />
             Google

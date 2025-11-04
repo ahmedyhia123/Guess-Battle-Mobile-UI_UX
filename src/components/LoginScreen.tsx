@@ -4,15 +4,11 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { ArrowLeft, Mail, Lock, Chrome } from 'lucide-react'
-import { createClient } from '@supabase/supabase-js'
-import { projectId, publicAnonKey } from '../utils/supabase/info'
+import { getSupabaseClient } from '../utils/supabase/client'
 import { toast } from 'sonner@2.0.3'
 
-// Create singleton Supabase client
-const supabaseClient = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-)
+// Get singleton Supabase client
+const supabaseClient = getSupabaseClient()
 
 interface LoginScreenProps {
   onBack: () => void
@@ -51,7 +47,25 @@ export function LoginScreen({ onBack, onLoginSuccess }: LoginScreenProps) {
   }
 
   const handleGoogleLogin = async () => {
-    toast.error('Please complete Google OAuth setup at https://supabase.com/docs/guides/auth/social-login/auth-google')
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      })
+
+      if (error) {
+        // If Google OAuth is not configured, show helpful message
+        if (error.message.includes('not enabled') || error.message.includes('provider')) {
+          toast.error('Please complete Google OAuth setup at https://supabase.com/docs/guides/auth/social-login/auth-google')
+        } else {
+          toast.error('Google login failed: ' + error.message)
+        }
+      }
+    } catch (error) {
+      toast.error('Google login error: ' + String(error))
+    }
   }
 
   const handleFacebookLogin = async () => {
